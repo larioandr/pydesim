@@ -24,9 +24,10 @@ setup(name='pydesim',
       packages=['pydesim'],
       scripts=[],
       install_requires=[
+          'colorama', 'numpy',
       ],
       include_package_data=True,
       zip_safe=False,
       setup_requires=["pytest-runner"],
-      tests_require=["pytest"], 
+      tests_require=["pytest", 'numpy'],
     )

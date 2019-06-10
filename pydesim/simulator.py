@@ -151,23 +151,10 @@ class Kernel:
             )
 
     def run(self, sim, init, fin):
-        if isinstance(sim.data, Model):
-            visited = set()
-            tovisit = [sim.data]
-            while tovisit:
-                module = tovisit.pop(0)
-                module.sim = sim
-                module.initialize()
-                visited.add(module)
-                children = module.children.modules()
-                for child in children:
-                    if child not in visited and child not in tovisit:
-                        tovisit.append(child)
-        else:
-            if hasattr(sim.data, 'initialize'):
-                sim.data.initialize(sim)
-            if init:
-                init(sim)
+        if hasattr(sim.data, 'initialize'):
+            sim.data.initialize(sim)
+        if init:
+            init(sim)
 
         while not self.empty:
             event = self._next_event()
@@ -254,14 +241,33 @@ class Logger:
 
 
 class Simulator:
-    def __init__(self, kernel, data, handlers, params=None, loglevel=None):
-        self.__data = data
+    def __init__(self, kernel, protodata, handlers, params=None, loglevel=None):
+        params = {} if params is None else params
         self.__handlers = HandlersDict(handlers)
         self.__kernel = kernel
         self.__params = _ParamsDict(params)
         self.__logger = Logger(kernel)
         if loglevel is not None:
             self.__logger.level = loglevel
+        # Creating model data:
+        if isinstance(protodata, type):
+            # If protodata is a class, then we create an instance of it with
+            # using params as kwargs. The rules are:
+            # - if `protodata` is subclassed from `Model`, we instantiate it
+            #   like `CustomModel(sim=self, param1=value1, param2=value2, ...)`;
+            # - if `protodata` is is not subclassed from `Model`, but have
+            #   special `create()` method, we call it with **params, but
+            #   without passing simulator;
+            # - in other cases, we simply call constructor with **params.
+            if issubclass(protodata, Model):
+                self.__data = protodata(self, **params)
+            elif hasattr(protodata, 'create'):
+                self.__data = getattr(protodata, 'create')(**params)
+            else:
+                self.__data = protodata(**params)
+        else:
+            # If protodata is not a class, we use it as it is.
+            self.__data = protodata
 
     @property
     def stime(self):
@@ -296,31 +302,20 @@ class Simulator:
 
 def simulate(data, init=None, fin=None, handlers=None, params=None,
              stime_limit=None, loglevel=Logger.Level.INFO):
-    def create_model_data(kwargs):
-        if isinstance(data, type):
-            if issubclass(data, Model):
-                return data()
-            if hasattr(data, 'create'):
-                return getattr(data, 'create')(**kwargs)
-            return data(**kwargs)
-        return data
-
     stime_limit = stime_limit if stime_limit is not None else 0
 
     if isinstance(params, list):
         results = []
         for a_params in params:
-            model_data = create_model_data(a_params)
             kernel = Kernel()
-            sim = Simulator(kernel, model_data, handlers, a_params, loglevel)
+            sim = Simulator(kernel, data, handlers, a_params, loglevel)
             kernel.setup(stime_limit=stime_limit)
             kernel.run(sim, init=init, fin=fin)
             results.append(sim)
         return results
 
-    model_data = create_model_data(params if params else {})
     kernel = Kernel()
-    sim = Simulator(kernel, model_data, handlers, params, loglevel)
+    sim = Simulator(kernel, data, handlers, params, loglevel)
     kernel.setup(stime_limit=stime_limit)
     kernel.run(sim, init=init, fin=fin)
     return sim
@@ -370,16 +365,13 @@ class _ModulesManager:
 
 
 class Model:
-    def __init__(self, parent=None):
-        self.__sim = None
+    def __init__(self, sim, parent=None, *args, **kwargs):
+        self.__sim = sim
+        self.__parent = parent
         self.__children = {}
         self.__modules = {}
         self.__children_manager = _ModulesManager(self.__children)
         self.__modules_manager = _ModulesManager(self.__modules)
-        self.__parent = parent
-
-    def initialize(self):
-        pass
 
     @property
     def sim(self):

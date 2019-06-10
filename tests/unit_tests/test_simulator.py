@@ -2,7 +2,7 @@ from unittest.mock import patch, ANY, Mock
 
 import pytest
 
-from pydesim import simulate
+from pydesim import simulate, Model
 
 
 def test_simulate_signature():
@@ -264,3 +264,13 @@ def test_array_returned_when_params_are_given_in_array():
     result = simulate(data_class, params=params)
     assert result[0].params.as_dict() == {'x': 1}
     assert result[1].params.as_dict() == {'x': 2}
+
+
+def test_simulate_calls_constructor_with_parameters_when_using_model():
+    class SomeModel(Model):
+        def __init__(self, sim, x, y):
+            super().__init__(self, sim)
+            assert x == 10
+            assert y == 'hello'
+    
+    result = simulate(SomeModel, params={'x': 10, 'y': 'hello'})

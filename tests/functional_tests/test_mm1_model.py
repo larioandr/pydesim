@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 from numpy.random.mtrand import exponential
 
-from pydesim import simulate
-from pydesim import Trace, Intervals, Statistic
+from pydesim import simulate, Trace, Intervals, Statistic
 
 
 @pytest.mark.parametrize('mean_arrival,mean_service', [(2., 1.), (5., 2.)])

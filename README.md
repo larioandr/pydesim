@@ -4,6 +4,10 @@ This package provides a discrete-event simulator written in Python language.
 
 ## Changelog:
 
+Latest:
+
+- do not pass parameters to the model constructor when inherited from `Model`, instead use `sim.params` to access simulation parameters.
+
 Version 0.1.2:
 
 - stop support for `initialize()` method for classes inherited from `Model`;

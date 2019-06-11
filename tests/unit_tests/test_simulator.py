@@ -266,11 +266,13 @@ def test_array_returned_when_params_are_given_in_array():
     assert result[1].params.as_dict() == {'x': 2}
 
 
-def test_simulate_calls_constructor_with_parameters_when_using_model():
-    class SomeModel(Model):
-        def __init__(self, sim, x, y):
-            super().__init__(self, sim)
-            assert x == 10
-            assert y == 'hello'
-    
-    result = simulate(SomeModel, params={'x': 10, 'y': 'hello'})
+def test_simulate_calls_constructor_without_parameters_but_with_sim():
+    with patch('pydesim.simulator.Simulator') as SimulatorMock:
+        class SomeModel(Model):
+            def __init__(self, sim):
+                assert isinstance(sim, SimulatorMock)
+                super().__init__(self, sim)
+                assert sim.params.x == 10
+                assert sim.params.y == 'hello'
+        
+        result = simulate(SomeModel, params={'x': 10, 'y': 'hello'})

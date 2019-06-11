@@ -14,11 +14,11 @@ class QueueingSystem(Model):
     - `server`: a model representing the packets server (`Server`)
     - `sink`: a model which collects served packets (`Sink`)
     """
-    def __init__(self, sim, arrival_mean, service_mean, capacity=-1):
+    def __init__(self, sim):
         super().__init__(sim)
-        self.children.add('queue', Queue(sim, self, capacity))
-        self.children.add('source', Source(sim, self, arrival_mean))
-        self.children.add('server', Server(sim, self, service_mean))
+        self.children.add('queue', Queue(sim, self, sim.params.capacity))
+        self.children.add('source', Source(sim, self, sim.params.arrival_mean))
+        self.children.add('server', Server(sim, self, sim.params.service_mean))
         self.children.add('sink', Sink(sim, self))
         # Statistics:
         self.system_size_trace = Trace()
@@ -210,6 +210,7 @@ def test_objective_mm1_model(mean_arrival, mean_service):
     ret = simulate(QueueingSystem, stime_limit=4000, params={
         'arrival_mean': mean_arrival,
         'service_mean': mean_service,
+        'capacity': -1,
     })
 
     busy_rate = ret.data.server.busy_trace.timeavg()

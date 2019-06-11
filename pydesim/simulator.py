@@ -254,13 +254,13 @@ class Simulator:
             # If protodata is a class, then we create an instance of it with
             # using params as kwargs. The rules are:
             # - if `protodata` is subclassed from `Model`, we instantiate it
-            #   like `CustomModel(sim=self, param1=value1, param2=value2, ...)`;
+            #   like `CustomModel(sim=self)`;
             # - if `protodata` is is not subclassed from `Model`, but have
             #   special `create()` method, we call it with **params, but
             #   without passing simulator;
             # - in other cases, we simply call constructor with **params.
             if issubclass(protodata, Model):
-                self.__data = protodata(self, **params)
+                self.__data = protodata(self)
             elif hasattr(protodata, 'create'):
                 self.__data = getattr(protodata, 'create')(**params)
             else:

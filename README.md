@@ -4,9 +4,13 @@ This package provides a discrete-event simulator written in Python language.
 
 ## Changelog:
 
-Latest:
+Version 0.1.3:
 
-- do not pass parameters to the model constructor when inherited from `Model`, instead use `sim.params` to access simulation parameters.
+- do not pass parameters to the model constructor when inherited from `Model`, instead use `sim.params` to access simulation parameters;
+- redesign connections and children API, implement them with different managers;
+- connections are now represented in `_ModulesConnection`, which supports delays;
+- connections provide `send(message)` call which works similar to OMNeT++ by causing `handle_message(message, from=None)` method of the peer module to be called after the delay;
+- parent is filled when registering a child, removed it from the model constructor. 
 
 Version 0.1.2:
 

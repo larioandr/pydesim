@@ -321,57 +321,141 @@ def simulate(data, init=None, fin=None, handlers=None, params=None,
     return sim
 
 
-class _ModulesManager:
-    def __init__(self, container):
+class _ModulesConnection:
+    def __init__(self, manager, module):
+        self.__manager = manager
+        self.__module = module
+        self.__delay = 0
+
+    @property
+    def manager(self):
+        return self.__manager
+
+    @property
+    def origin(self):
+        return self.__manager.owner
+
+    @property
+    def sim(self):
+        return self.origin.sim
+
+    @property
+    def module(self):
+        return self.__module
+
+    @property
+    def delay(self):
+        return self.__delay
+
+    @delay.setter
+    def delay(self, value):
+        self.__delay = value
+
+    def send(self, message):
+        try:
+            # noinspection PyCallingNonCallable
+            delay = self.__delay()
+        except TypeError:
+            delay = self.__delay
+        self.sim.schedule(delay, self.module.handle_message, args=(message,),
+                          kwargs={'sender': self.origin})
+
+
+class _ConnectionsManager:
+    def __init__(self, owner, container):
         assert isinstance(container, dict)
+        self.__owner = owner
         self.__container = container
 
-    def add(self, name, module):
-        if name in self.__container:
-            del self.__container[name]
-        self.__container[name] = module
+    @property
+    def owner(self):
+        return self.__owner
 
-    def update(self, kwargs):
-        for name in kwargs:
-            self.remove(name)
-        self.__container.update(kwargs)
+    def __setitem__(self, name, module):
+        self.__container[name] = _ModulesConnection(self, module)
 
-    def remove(self, name):
-        try:
-            del self.__container[name]
-        except KeyError:
-            pass
-
-    def get(self, name):
+    def __getitem__(self, name):
         return self.__container[name]
 
-    def all(self):
-        return dict(self.__container)
+    def __contains__(self, item):
+        return item in self.__container
+
+    def get(self, name, default=None):
+        try:
+            return self.__getitem__(name)
+        except KeyError:
+            return default
+
+    def update(self, d):
+        for name, module in d.items():
+            self.__setitem__(name, module)
+
+    def names(self):
+        return self.__container.keys()
 
     def modules(self):
-        modules = []
+        return (val.module for val in self.__container.values())
 
-        def add(val):
-            if isinstance(val, Model):
-                modules.append(val)
+    def as_dict(self):
+        return {name: conn.module for name, conn in self.__container.items()}
+
+
+class _ChildrenManager:
+    def __init__(self, owner, container):
+        assert isinstance(container, dict)
+        self.__owner = owner
+        self.__container = container
+
+    @property
+    def owner(self):
+        return self.__owner
+
+    # noinspection PyProtectedMember
+    def __setitem__(self, name, module):
+        if name in self.__container:
+            self.__container[name]._set_parent(None)
+        try:
+            module._set_parent(self.__owner)
+            self.__container[name] = module
+        except AttributeError:
+            self.__container[name] = tuple(module)
+            for item in module:
+                item._set_parent(self.__owner)
+
+    def __getitem__(self, name):
+        return self.__container[name]
+
+    def get(self, name, default=None):
+        try:
+            return self.__getitem__(name)
+        except KeyError:
+            return default
+
+    def __contains__(self, item):
+        return item in self.__container
+
+    def update(self, d):
+        for name, module in d.items():
+            self.__setitem__(name, module)
+
+    def all(self):
+        result = []
+        for name, module in self.__container.items():
+            if hasattr(module, '_set_parent'):
+                result.append(module)
             else:
-                for v in val:
-                    add(v)
-
-        for value in self.__container.values():
-            add(value)
-
-        return modules
+                result.extend(module)
+        return tuple(result)
 
 
 class Model:
-    def __init__(self, sim, parent=None, *args, **kwargs):
+    def __init__(self, sim, *args, **kwargs):
         self.__sim = sim
-        self.__parent = parent
+        self.__parent = None
         self.__children = {}
         self.__modules = {}
-        self.__children_manager = _ModulesManager(self.__children)
-        self.__modules_manager = _ModulesManager(self.__modules)
+        self.__children_manager = _ChildrenManager(self, self.__children)
+        self.__modules_manager = _ConnectionsManager(self, self.__modules)
 
     @property
     def sim(self):
@@ -392,3 +476,9 @@ class Model:
     @property
     def parent(self):
         return self.__parent
+
+    def _set_parent(self, parent):
+        self.__parent = parent
+
+    def handle_message(self, message, sender=None):
+        raise NotImplementedError

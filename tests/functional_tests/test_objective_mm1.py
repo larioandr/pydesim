@@ -16,29 +16,36 @@ class QueueingSystem(Model):
     """
     def __init__(self, sim):
         super().__init__(sim)
-        self.children.add('queue', Queue(sim, self, sim.params.capacity))
-        self.children.add('source', Source(sim, self, sim.params.arrival_mean))
-        self.children.add('server', Server(sim, self, sim.params.service_mean))
-        self.children.add('sink', Sink(sim, self))
+        self.children['queue'] = Queue(sim, sim.params.capacity)
+        self.children['source'] = Source(sim, sim.params.arrival_mean)
+        self.children['server'] = Server(sim, sim.params.service_mean)
+        self.children['sink'] = Sink(sim)
+
+        # Building connections:
+        self.source.connections['queue'] = self.queue
+        self.queue.connections['server'] = self.server
+        self.server.connections['queue'] = self.queue
+        self.server.connections['sink'] = self.sink
+
         # Statistics:
         self.system_size_trace = Trace()
         self.system_size_trace.record(self.sim.stime, 0)
     
     @property
     def queue(self):
-        return self.children.get('queue')
+        return self.children['queue']
     
     @property
     def source(self):
-        return self.children.get('source')
+        return self.children['source']
     
     @property
     def server(self):
-        return self.children.get('server')
+        return self.children['server']
     
     @property
     def sink(self):
-        return self.children.get('sink')
+        return self.children['sink']
     
     @property
     def system_size(self):
@@ -51,18 +58,18 @@ class QueueingSystem(Model):
 class Queue(Model):
     """Queue module represents the packets queue, stores only current size.
 
-        Methods and properties:
-        - push(): increase the queue size
-        - pop(): decrease the queue size
-        - size: get current queue size
+    Connections: server
 
-        Statistics:
-        -  size_trace: Trace, holding the history of the queue size updates
+    Methods and properties:
+    - push(): increase the queue size
+    - pop(): decrease the queue size
+    - size: get current queue size
 
-        Parent: `QueueingSystem`
+    Statistics:
+    -  size_trace: Trace, holding the history of the queue size updates
     """
-    def __init__(self, sim, queueing_system, capacity):
-        super().__init__(sim, parent=queueing_system)
+    def __init__(self, sim, capacity):
+        super().__init__(sim)
         self.__capacity = capacity
         self.__size = 0
         # Statistics:
@@ -74,16 +81,13 @@ class Queue(Model):
         return self.__capacity
     
     @property
-    def server(self):
-        return self.parent.server
-    
-    @property
     def size(self):
         return self.__size
     
     def push(self):
-        if self.__size == 0 and not self.server.busy:
-            self.server.start_service()
+        server = self.connections['server'].module
+        if self.__size == 0 and not server.busy:
+            server.start_service()
         elif self.capacity < 0 or self.__size < self.capacity:
             self.__size += 1
             self.size_trace.record(self.sim.stime, self.__size)
@@ -101,6 +105,8 @@ class Queue(Model):
 class Source(Model):
     """Source module represents the traffic source with exponential intervals.
 
+    Connections: queue
+
     Handlers:
     - on_timeout(): called upon next arrival timeout
 
@@ -109,8 +115,8 @@ class Source(Model):
 
     Parent: `QueueingSystem`
     """
-    def __init__(self, sim, queueing_system, arrival_mean):
-        super().__init__(sim, parent=queueing_system)
+    def __init__(self, sim, arrival_mean):
+        super().__init__(sim)
         self.__arrival_mean = arrival_mean
         # Statistics:
         self.intervals = Intervals()
@@ -120,9 +126,10 @@ class Source(Model):
     @property
     def arrival_mean(self):
         return self.__arrival_mean
-    
+
     def on_timeout(self):
-        self.parent.queue.push()
+        queue = self.connections['queue'].module
+        queue.push()
         self._schedule_next_arrival()
     
     def _schedule_next_arrival(self):
@@ -132,6 +139,8 @@ class Source(Model):
 
 class Server(Model):
     """Server module represents a packet server with exponential service time.
+
+    Connections: queue, sink
 
     Handlers:
     - on_service_end(): called upon service timeout
@@ -145,8 +154,8 @@ class Server(Model):
 
     Parent: `QueueingSystem`
     """
-    def __init__(self, sim, queueing_system, service_mean):
-        super().__init__(sim, parent=queueing_system)
+    def __init__(self, sim, service_mean):
+        super().__init__(sim)
         self.__service_mean = service_mean
         self.__busy = False
         # Statistics:
@@ -159,25 +168,18 @@ class Server(Model):
         return self.__service_mean
     
     @property
-    def queue(self):
-        return self.parent.queue
-    
-    @property
-    def sink(self):
-        return self.parent.sink
-    
-    @property
     def busy(self):
         return self.__busy
     
     def on_service_end(self):
         assert self.__busy
+        queue = self.connections['queue'].module
         self.__busy = False
         self.busy_trace.record(self.sim.stime, 0)
-        if self.queue.size > 0:
-            self.queue.pop()
+        if queue.size > 0:
+            queue.pop()
             self.start_service()
-        self.sink.receive_packet()
+        self.connections['sink'].module.receive_packet()
         self.parent.update_system_size()
 
     def start_service(self):
@@ -195,8 +197,8 @@ class Sink(Model):
     Methods:
     - receive_packet(): called when the server finishes serving packet.
     """
-    def __init__(self, sim, queueing_system):
-        super().__init__(sim, parent=queueing_system)
+    def __init__(self, sim):
+        super().__init__(sim)
         # Statistics:
         self.departures = Intervals()
         self.departures.record(self.sim.stime)

@@ -4,6 +4,13 @@ This package provides a discrete-event simulator written in Python language.
 
 ## Changelog:
 
+Latest:
+- create connections with `set()` method;
+- by default create reverse connections between modules;
+- create unidirectional connections with `set(reverse=False)` method;
+- add `connection` argument to `handle_message()` call;
+- by default, `handle_message()` does not raise `NotImplementedError` exception. 
+
 Version 0.1.3:
 
 - do not pass parameters to the model constructor when inherited from `Model`, instead use `sim.params` to access simulation parameters;

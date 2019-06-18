@@ -1,4 +1,4 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
@@ -9,27 +9,75 @@ class Ping(Model):
     """Ping dummy model will be used when we will need a dummy model.
     """
     def __init__(self, sim):
-        super().__init__(sim, parent=None)
+        super().__init__(sim)
 
 
 #############################################################################
 # TEST MODULE CONNECTIONS
 #############################################################################
 def test_creating_single_connections():
+    # We re-define Ping class since we want to check that CamelCase class
+    # name is changed to snake_case when building reverse connection:
+    class PingMod(Ping):
+        def __init__(self, sim):
+            super().__init__(sim)
+
+    sim_mock = Mock()
+    ping_module = PingMod(sim_mock)
+
+    pong_mock = MagicMock()
+    ping_module.connections['pong'] = pong_mock
+
+    assert ping_module.connections['pong'].module == pong_mock
+    assert ping_module.connections['pong'].name == 'pong'
+    pong_mock.connections.set.assert_called_with(
+        'ping_mod', ping_module, reverse=False
+    )
+
+
+def test_creating_single_connection_with_set():
+    sim_mock = Mock()
+    ping = Ping(sim_mock)
+
+    red_mock, blue_mock = Mock(), Mock()
+    ping.connections.set('red', red_mock)
+    ping.connections.set('blue', blue_mock, rname='origin')
+
+    assert ping.connections['red'].module == red_mock
+    assert ping.connections['blue'].module == blue_mock
+    red_mock.connections.set.assert_called_with('ping', ping, reverse=False)
+    blue_mock.connections.set.assert_called_with('origin', ping, reverse=False)
+
+
+def test_reverse_connections():
+    sim_mock = Mock()
+    ping = Ping(sim_mock)
+
+    rev_conn = Mock()
+    pong_mock = Mock()
+    pong_mock.connections.set = Mock(return_value=rev_conn)
+
+    ping.connections.set('pong', pong_mock)
+
+    assert ping.connections['pong'].reverse == rev_conn
+
+
+def test_creating_unidirectional_connection():
     sim_mock = Mock()
     ping = Ping(sim_mock)
 
     pong_mock = Mock()
-    ping.connections['pong'] = pong_mock
+    ping.connections.set('pong', pong_mock, reverse=False)
 
     assert ping.connections['pong'].module == pong_mock
+    pong_mock.connections.set.assert_not_called()
 
 
 def test_creating_multiple_connections_with_update():
     sim_mock = Mock()
     ping = Ping(sim_mock)
 
-    red_mock, blue_mock = Mock(), Mock()
+    red_mock, blue_mock = MagicMock(), MagicMock()
     ping.connections.update({'red': red_mock, 'blue': blue_mock})
 
     assert ping.connections['red'].module == red_mock
@@ -40,7 +88,7 @@ def test_listing_connections():
     sim_mock = Mock()
     ping = Ping(sim_mock)
 
-    red_mock, blue_mock = Mock(), Mock()
+    red_mock, blue_mock = MagicMock(), MagicMock()
     ping.connections.update({'red': red_mock, 'blue': blue_mock})
 
     assert set(ping.connections.names()) == {'red', 'blue'}
@@ -54,7 +102,7 @@ def test_getting_connection_with_get_method():
     sim_mock = Mock()
     ping = Ping(sim_mock)
 
-    pong_mock = Mock()
+    pong_mock = MagicMock()
     ping.connections['pong'] = pong_mock
     assert ping.connections.get('pong', None).module == pong_mock
     assert ping.connections.get('wrong_name', 'something') == 'something'
@@ -65,7 +113,7 @@ def test_connection_exists():
     sim_mock = Mock()
     ping = Ping(sim_mock)
 
-    pong_mock = Mock()
+    pong_mock = MagicMock()
     ping.connections['pong'] = pong_mock
 
     assert 'pong' in ping.connections
@@ -91,7 +139,7 @@ def test_connection_method_send():
 
     sim_mock.schedule.assert_called_with(
         0, pong_mock.handle_message, args=(message_mock,),
-        kwargs={'sender': ping}
+        kwargs={'sender': ping, 'connection': ping.connections['pong'].reverse}
     )
 
 
@@ -108,13 +156,13 @@ def test_connection_delay_setting():
     ping.connections['red'].send(message_mock)
     sim_mock.schedule.assert_called_with(
         13, red_mock.handle_message, args=(message_mock,),
-        kwargs={'sender': ping}
+        kwargs={'sender': ping, 'connection': ping.connections['red'].reverse}
     )
 
     ping.connections['blue'].send(message_mock)
     sim_mock.schedule.assert_called_with(
         42, blue_mock.handle_message, args=(message_mock,),
-        kwargs={'sender': ping}
+        kwargs={'sender': ping, 'connection': ping.connections['blue'].reverse}
     )
 
 

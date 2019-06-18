@@ -1,8 +1,14 @@
 import heapq
 import itertools
+import re
 from enum import Enum
 from functools import total_ordering
 import colorama
+
+
+def camel_to_snake_case(name):
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
 
 class HandlersDict:
@@ -322,10 +328,12 @@ def simulate(data, init=None, fin=None, handlers=None, params=None,
 
 
 class _ModulesConnection:
-    def __init__(self, manager, module):
+    def __init__(self, manager, module, name):
         self.__manager = manager
         self.__module = module
+        self.__name = name
         self.__delay = 0
+        self.__reverse_connection = None
 
     @property
     def manager(self):
@@ -336,12 +344,20 @@ class _ModulesConnection:
         return self.__manager.owner
 
     @property
+    def reverse(self):
+        return self.__reverse_connection
+
+    @property
     def sim(self):
         return self.origin.sim
 
     @property
     def module(self):
         return self.__module
+    
+    @property
+    def name(self):
+        return self.__name
 
     @property
     def delay(self):
@@ -357,8 +373,13 @@ class _ModulesConnection:
             delay = self.__delay()
         except TypeError:
             delay = self.__delay
-        self.sim.schedule(delay, self.module.handle_message, args=(message,),
-                          kwargs={'sender': self.origin})
+        self.sim.schedule(
+            delay, self.module.handle_message, args=(message,), kwargs={
+                'sender': self.origin, 'connection': self.reverse,
+            })
+
+    def _set_reverse_connection(self, conn):
+        self.__reverse_connection = conn
 
 
 class _ConnectionsManager:
@@ -372,13 +393,25 @@ class _ConnectionsManager:
         return self.__owner
 
     def __setitem__(self, name, module):
-        self.__container[name] = _ModulesConnection(self, module)
+        self.set(name, module, reverse=True)
 
     def __getitem__(self, name):
         return self.__container[name]
 
     def __contains__(self, item):
         return item in self.__container
+
+    # noinspection PyProtectedMember
+    def set(self, name, module, reverse=True, rname=None):
+        direct_conn = _ModulesConnection(self, module, name)
+        self.__container[name] = direct_conn
+        if reverse:
+            if rname is None:
+                rname = camel_to_snake_case(self.owner.__class__.__name__)
+            rev_conn = module.connections.set(rname, self.owner, reverse=False)
+            direct_conn._set_reverse_connection(rev_conn)
+            rev_conn._set_reverse_connection(direct_conn)
+        return direct_conn
 
     def get(self, name, default=None):
         try:
@@ -480,5 +513,5 @@ class Model:
     def _set_parent(self, parent):
         self.__parent = parent
 
-    def handle_message(self, message, sender=None):
-        raise NotImplementedError
+    def handle_message(self, message, connection=None, sender=None):
+        pass

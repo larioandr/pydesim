@@ -7,7 +7,7 @@ def readme():
 
 
 setup(name='pydesim',
-      version='0.1.3',
+      version='0.1.5',
       description='Python Discrete-Event Simulator',
       long_description=readme(),
       classifiers=[

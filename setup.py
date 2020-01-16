@@ -7,7 +7,7 @@ def readme():
 
 
 setup(name='pydesim',
-      version='0.1',
+      version='0.1.5',
       description='Python Discrete-Event Simulator',
       long_description=readme(),
       classifiers=[
@@ -24,9 +24,10 @@ setup(name='pydesim',
       packages=['pydesim'],
       scripts=[],
       install_requires=[
+          'colorama', 'numpy',
       ],
       include_package_data=True,
       zip_safe=False,
       setup_requires=["pytest-runner"],
-      tests_require=["pytest"], 
+      tests_require=["pytest", 'numpy'],
     )
